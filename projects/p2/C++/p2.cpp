@@ -240,13 +240,15 @@ static void CommonSubexpressionElimination(Module *M)
 {
     // Implement this function
     int CSE_Simplify = 0;
-    // optimization 0
+    
       if (M!=nullptr)
       {
         for (auto func = M->begin();func!=M->end();func++)
         {
             for (auto bb = func->begin();bb!=func->end();bb++)
             {
+
+                // optimization 0
                 for (auto instr = bb->begin();instr!=bb->end();)
                 {
                     instr->print(errs(),true);
@@ -258,6 +260,7 @@ static void CommonSubexpressionElimination(Module *M)
                     else instr++;
                 }
 
+                // optimization 1
                 for (auto instr = bb->begin();instr!=bb->end();instr++)
                 {
                     Value *val = SimplifyInstruction(&*instr,M->getDataLayout());
