@@ -239,7 +239,7 @@ bool isDead(Instruction &I) {
 static void CommonSubexpressionElimination(Module *M) 
 {
     // Implement this function
-
+    int CSE_Simplify = 0;
     // optimization 0
       if (M!=nullptr)
       {
@@ -263,7 +263,8 @@ static void CommonSubexpressionElimination(Module *M)
                     Value *val = SimplifyInstruction(&*instr,M->getDataLayout());
                     if (val)
                     {
-                        errs() << val<<"\n";
+                        instr->replaceAllUsesWith(val);
+                        CSE_Simplify++;
                     }
 
                 }
