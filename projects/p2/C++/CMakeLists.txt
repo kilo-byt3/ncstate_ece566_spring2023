@@ -18,7 +18,7 @@ llvm_map_components_to_libnames(llvm_libs analysis bitreader bitwriter codegen c
 
 include_directories(.)
 
-add_executable(p2 p2.cpp)
+add_executable(p2 p2.cpp ../C/dominance.cpp)
 target_link_libraries(p2 ${llvm_libs})
 
 enable_testing()
