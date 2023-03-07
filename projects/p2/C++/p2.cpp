@@ -25,6 +25,8 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 
+#include "../C/dominance.h"
+
 using namespace llvm;
 
 static void CommonSubexpressionElimination(Module *);
@@ -88,7 +90,8 @@ int main(int argc, char **argv) {
     }
 
     // If requested, do some early optimizations
-    if (Mem2Reg)
+    //if (Mem2Reg)
+    if (false)
     {
         legacy::PassManager Passes;
         Passes.add(createPromoteMemoryToRegisterPass());
@@ -236,43 +239,190 @@ bool isDead(Instruction &I) {
   return false;
 }
 
+bool isCommon (Instruction* instr1, Instruction* instr2)
+{
+    if (LLVMDominates(wrap(instr1->getFunction()), wrap(instr1->getParent()), wrap(instr2->getParent())))
+    {
+        //errs()<<"\n|DOMINATE|\n";
+        if (isa<LoadInst>(instr1) || isa<StoreInst>(instr1) || isa<BranchInst>(instr1) || isa<AllocaInst>(instr1))
+            return false;
+        if (isa<LoadInst>(instr2) || isa<StoreInst>(instr2) || isa<BranchInst>(instr2) || isa<AllocaInst>(instr2))
+            return false;
+        if ((instr1->getOpcode() == instr2->getOpcode()) && (instr1->getType() == instr2->getType()) && (instr1->getNumOperands() == instr2->getNumOperands()))
+        {
+            for (unsigned int i=0;i< instr1->getNumOperands();i++)
+                if (instr1->getOperand(i) != instr2->getOperand(i))
+                    return false;
+            return true;
+        }
+    }
+    return false;
+}
+
 static void CommonSubexpressionElimination(Module *M) 
 {
     // Implement this function
     int CSE_Simplify = 0;
-    
-      if (M!=nullptr)
-      {
+    int CSE_Basic = 0;
+
+    if (M!=nullptr)
+    {
+        errs()<<"\n+++++++++++++++++ BEFORE +++++++++++++++++++++++++++++\n";
         for (auto func = M->begin();func!=M->end();func++)
         {
             for (auto bb = func->begin();bb!=func->end();bb++)
             {
-
-                // optimization 0
-                for (auto instr = bb->begin();instr!=bb->end();)
-                {
-                    instr->print(errs(),true);
-                    if (isDead(*instr))
-                    {
-                        //std::cout<<" is dead.\n";
-                        instr = instr->eraseFromParent();
-                    }
-                    else instr++;
-                }
-
-                // optimization 1
+                
                 for (auto instr = bb->begin();instr!=bb->end();instr++)
                 {
-                    Value *val = SimplifyInstruction(&*instr,M->getDataLayout());
-                    if (val)
-                    {
-                        instr->replaceAllUsesWith(val);
-                        CSE_Simplify++;
-                    }
-
+                    errs()<<*instr<<"\n";
                 }
             }
         }
-      }
+        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";  
+
+        
+        // optimization 0 - Deadcode Elimination
+        //errs()<<"+++++++++++++++++++ OPT0 +++++++++++++++++++++++++++++\n";
+        for (auto func = M->begin();func!=M->end();func++)
+        {
+            for (auto bb = func->begin();bb!=func->end();bb++)
+                for (auto instr = bb->begin();instr!=bb->end();)
+                    if (isDead(*instr))
+                    {
+                        auto toErase = instr;
+                        instr++;
+                        toErase->eraseFromParent();
+                        CSE_Basic++;
+                    }
+                    else instr++;
+        }
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+
+
+        // optimization 1.a - Simplify Instructions
+        //errs()<<"+++++++++++++++++++ OPT1 +++++++++++++++++++++++++++++\n";
+        for (auto func = M->begin();func!=M->end();func++)
+        {
+            for (auto bb = func->begin();bb!=func->end();bb++)
+                for (auto instr = bb->begin();instr!=bb->end();)
+                {
+                    Value *val = SimplifyInstruction(&*instr,M->getDataLayout());
+                    if (val != nullptr) 
+                    {
+                        instr->replaceAllUsesWith(val);
+                        auto toErase = instr;
+                        instr++;
+                        toErase->eraseFromParent();
+                        CSE_Simplify++;
+                    }
+                    else instr++;
+                }
+        }
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+
+        // optimization 1.b - CSE
+        //errs()<<"+++++++++++++++++++ OPT2 +++++++++++++++++++++++++++++\n";
+        for (auto func = M->begin();func!=M->end();func++)
+        {
+            for (auto bb = func->begin();bb!=func->end();bb++)
+                for (auto instr1 = bb->begin();instr1!=bb->end();instr1++)
+                {
+                    auto instr2 = instr1;
+                    instr2++;
+                    while(instr2!=bb->end())
+                        if (isCommon(&*instr1, &*instr2))
+                        {
+                            auto toErase = instr2;
+                            instr2++;
+                            toErase->replaceAllUsesWith((Value *)(&* instr1));
+                            toErase->eraseFromParent();
+                        }
+                        else instr2++;
+
+                    instr2 = instr1;
+                    instr2++;
+
+                    auto parent = wrap(instr1->getParent());
+                    auto child = LLVMFirstDomChild(parent);
+                    
+                    while (child)
+                    //while(instr2!=bb->end())
+                    {
+                        for (auto instr2 = unwrap(child)->begin(); instr2 != unwrap(child)->end();)
+                        {
+                            if (isCommon(&*instr1, &*instr2))
+                            {
+                                auto toErase = instr2;
+                                instr2++;
+                                toErase->replaceAllUsesWith((Value *)(&* instr1));
+                                toErase->eraseFromParent();
+                            }
+                            else instr2++;
+                        }
+                        child = LLVMNextDomChild(parent,child);  // get next child of BB
+                    }
+                }
+        }
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+
+
+        // optimization 2 - Load Eliminations
+        errs()<<"+++++++++++++++++++ OPT3 +++++++++++++++++++++++++++++\n";
+        for (auto func = M->begin();func!=M->end();func++)
+        {
+            for (auto bb = func->begin();bb!=func->end();bb++)
+            {
+                
+                for (auto instr = bb->begin();instr!=bb->end();)
+                {
+                    instr++;
+                }
+            }
+        }
+        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+
+
+
+        errs()<<"++++++++++++++++++++++ AFTER +++++++++++++++++++++++++\n";
+        for (auto func = M->begin();func!=M->end();func++)
+        {
+            for (auto bb = func->begin();bb!=func->end();bb++)
+            {
+                
+                for (auto instr = bb->begin();instr!=bb->end();instr++)
+                {
+                    errs()<<*instr<<"\n";
+                }
+            }
+        }
+        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+
+
+
+
+        /*
+        // optimization 1 - CSE
+        for (auto func = M->begin();func!=M->end();func++)
+        {
+            for (auto bb = func->begin();bb!=func->end();bb++)
+            {   
+                for (auto instr1 = bb->begin();instr1!=bb->end();instr1++)
+                {
+                    auto instr2 = instr1;
+                    instr2++;
+                    for (;instr2!=bb->end();)
+                        if(isCommon(&*instr1,&*instr2))
+                        {
+                            errs()<<*instr1<<" |common with| "<<*instr2<<"\n";
+                            instr2->replaceAllUsesWith(SimplifyInstruction(&*instr1,M->getDataLayout()));
+                            instr2 = instr2->eraseFromParent();
+                        }
+                        else instr2++;
+                }
+            }
+        }
+        */
+    }
 }
 
