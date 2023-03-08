@@ -11,9 +11,6 @@ define i32 @cse1(i8* %0, i32* %1, i64* %2, i32 %3, i64 %4, i8 %5) {
 ; CHECK-NEXT: alloca
 ; CHECK-NEXT: store
 ; CHECK-NEXT: store
-; CHECK-NEXT: load
-; CHECK-NEXT: load
-; CHECK-NEXT: lshr
 ; CHECK-NEXT: store
 ; CHECK-NEXT: store
 ; CHECK-NEXT: ret i32

@@ -392,12 +392,63 @@ int loadElimination(Module* M)
     return CSE_RLoad;
 }
 
+void storeElimination(Module* M, int& CSE_RS, int& CSE_RS2L)
+{
+    int CSE_RStore = 0;
+    int CSE_RStore2Load = 0;
+    for (auto func = M->begin();func!=M->end();func++)
+    {
+        for (auto bb = func->begin();bb!=func->end();bb++)
+        {
+            for (auto instr1 = bb->begin();instr1!=bb->end();)
+            {
+                bool storeFound = false;
+                if (isa<StoreInst>(instr1))
+                {
+                    auto instr2 = instr1;
+                    instr2++;
+                    while(instr2!=bb->end())
+                    {
+                        if (isa<LoadInst>(instr2) && !instr2->isVolatile() && (dyn_cast<LoadInst>(instr2)->getPointerOperand() == dyn_cast<StoreInst>(instr1)->getPointerOperand()) && (((dyn_cast<StoreInst>(instr1))->getValueOperand())->getType() == instr2->getType()))
+                        {
+                            errs()<<"Store-Load Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
+                            auto toErase = instr2;
+                            instr2++;
+                            CSE_RStore2Load++;
+                            toErase->replaceAllUsesWith((dyn_cast<StoreInst>(instr1))->getValueOperand());
+                            toErase->eraseFromParent();
+                            continue;
+                        }
+                        else if ( isa<StoreInst>(instr2) && (dyn_cast<StoreInst>(instr2)->getPointerOperand() == dyn_cast<StoreInst>(instr1)->getPointerOperand()) && (((dyn_cast<StoreInst>(instr1))->getValueOperand())->getType()==((dyn_cast<StoreInst>(instr2))->getValueOperand())->getType()) )
+                        {
+                            errs()<<"Store-Store Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
+                            auto toErase = instr1;
+                            instr1++;
+                            toErase->eraseFromParent();
+                            storeFound = true;
+                            break;
+                        }
+                        instr2++;
+                    }
+                    instr1++;
+                    if (storeFound) continue;
+                }
+                else instr1++;
+            }
+        }
+    }
+    CSE_RS = CSE_RStore;
+    CSE_RS2L = CSE_RStore2Load;
+}
+
 static void CommonSubexpressionElimination(Module *M) 
 {
     // Implement this function
     int CSE_Simplify = 0;
     int CSE_Basic = 0;
     int CSE_RLoad = 0;
+    int CSE_RStore = 0;
+    int CSE_RStore2load = 0;
 
     if (M!=nullptr)
     {
@@ -422,10 +473,11 @@ static void CommonSubexpressionElimination(Module *M)
         //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
 
-        // optimization 1.a - Simplify Instructions
+        // optimization 1.a - Simplify Instructions 1
         //errs()<<"+++++++++++++++++++ OPT1.a +++++++++++++++++++++++++++++\n";
         CSE_Simplify = simplify(M);
         //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+
 
         // optimization 1.b - CSE
         //errs()<<"+++++++++++++++++++ OPT1.b +++++++++++++++++++++++++++++\n";
@@ -433,14 +485,20 @@ static void CommonSubexpressionElimination(Module *M)
         //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
 
-        // optimization 2 - Load Eliminations
-        errs()<<"+++++++++++++++++++ OPT2 +++++++++++++++++++++++++++++\n";
+        // optimization 2.a - Load Eliminations
+        //errs()<<"+++++++++++++++++++ OPT2 +++++++++++++++++++++++++++++\n";
         CSE_RLoad = loadElimination(M);
-        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
+
+        // optimization 2.b - Simplify Instructions 2
+        //errs()<<"+++++++++++++++++++ OPT1.a +++++++++++++++++++++++++++++\n";
         CSE_Simplify += simplify(M);
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
-
+        errs()<<"+++++++++++++++++++ OPT3 +++++++++++++++++++++++++++++\n";
+        storeElimination(M,CSE_RStore,CSE_RStore2load);
+        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
         errs()<<"++++++++++++++++++++++ AFTER +++++++++++++++++++++++++\n";
         for (auto func = M->begin();func!=M->end();func++)
@@ -456,6 +514,7 @@ static void CommonSubexpressionElimination(Module *M)
         }
         errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
+        CSE_Simplify += simplify(M);
 
 
 

@@ -9,7 +9,6 @@ define i32 @cse6(i8* %0, i32* %1, i64* %2, i32 %3, i64 %4, i8 %5) {
 ; CHECK-NEXT: alloca
 ; CHECK-NEXT: and
 ; CHECK-NEXT: store
-; CHECK-NEXT: load
 ; CHECK-NEXT: store
 ; CHECK-NEXT: icmp sge
 ; CHECK-NEXT: br i1
