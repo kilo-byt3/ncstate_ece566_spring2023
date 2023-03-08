@@ -367,7 +367,7 @@ int loadElimination(Module* M)
                     {
                         if (isa<LoadInst>(instr2) && !instr2->isVolatile() && (dyn_cast<LoadInst>(instr2)->getPointerOperand() == dyn_cast<LoadInst>(instr1)->getPointerOperand()) && (instr1->getType() == instr2->getType()))
                         {
-                            errs()<<"Load Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
+                            //errs()<<"Load Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
                             auto toErase = instr2;
                             instr2++;
                             toErase->replaceAllUsesWith((Value *)(&* instr1));
@@ -411,7 +411,7 @@ void storeElimination(Module* M, int& CSE_RS, int& CSE_RS2L)
                     {
                         if (isa<LoadInst>(instr2) && !instr2->isVolatile() && (dyn_cast<LoadInst>(instr2)->getPointerOperand() == dyn_cast<StoreInst>(instr1)->getPointerOperand()) && (((dyn_cast<StoreInst>(instr1))->getValueOperand())->getType() == instr2->getType()))
                         {
-                            errs()<<"Store-Load Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
+                            //errs()<<"Store-Load Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
                             auto toErase = instr2;
                             instr2++;
                             CSE_RStore2Load++;
@@ -421,7 +421,7 @@ void storeElimination(Module* M, int& CSE_RS, int& CSE_RS2L)
                         }
                         else if ( isa<StoreInst>(instr2) && (dyn_cast<StoreInst>(instr2)->getPointerOperand() == dyn_cast<StoreInst>(instr1)->getPointerOperand()) && (((dyn_cast<StoreInst>(instr1))->getValueOperand())->getType()==((dyn_cast<StoreInst>(instr2))->getValueOperand())->getType()) )
                         {
-                            errs()<<"Store-Store Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
+                            //errs()<<"Store-Store Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
                             auto toErase = instr1;
                             instr1++;
                             toErase->eraseFromParent();
@@ -452,7 +452,7 @@ static void CommonSubexpressionElimination(Module *M)
 
     if (M!=nullptr)
     {
-        errs()<<"\n+++++++++++++++++ BEFORE +++++++++++++++++++++++++++++\n";
+        //errs()<<"\n+++++++++++++++++ BEFORE +++++++++++++++++++++++++++++\n";
         for (auto func = M->begin();func!=M->end();func++)
         {
             for (auto bb = func->begin();bb!=func->end();bb++)
@@ -460,11 +460,11 @@ static void CommonSubexpressionElimination(Module *M)
                 
                 for (auto instr = bb->begin();instr!=bb->end();instr++)
                 {
-                    errs()<<*instr<<"\n";
+                    //errs()<<*instr<<"\n";
                 }
             }
         }
-        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";  
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";  
 
         
         // optimization 0 - Deadcode Elimination
@@ -496,11 +496,11 @@ static void CommonSubexpressionElimination(Module *M)
         CSE_Simplify += simplify(M);
         //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
-        errs()<<"+++++++++++++++++++ OPT3 +++++++++++++++++++++++++++++\n";
+        //errs()<<"+++++++++++++++++++ OPT3 +++++++++++++++++++++++++++++\n";
         storeElimination(M,CSE_RStore,CSE_RStore2load);
-        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
-        errs()<<"++++++++++++++++++++++ AFTER +++++++++++++++++++++++++\n";
+        //errs()<<"++++++++++++++++++++++ AFTER +++++++++++++++++++++++++\n";
         for (auto func = M->begin();func!=M->end();func++)
         {
             for (auto bb = func->begin();bb!=func->end();bb++)
@@ -508,11 +508,11 @@ static void CommonSubexpressionElimination(Module *M)
                 
                 for (auto instr = bb->begin();instr!=bb->end();instr++)
                 {
-                    errs()<<*instr<<"\n";
+                    //errs()<<*instr<<"\n";
                 }
             }
         }
-        errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
         CSE_Simplify += simplify(M);
 
