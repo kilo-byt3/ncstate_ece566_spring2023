@@ -242,7 +242,6 @@ bool isCommon (Instruction* instr1, Instruction* instr2)
 {
     if (LLVMDominates(wrap(instr1->getFunction()), wrap(instr1->getParent()), wrap(instr2->getParent())))
     {
-        //errs()<<"\n|DOMINATE|\n";
         if (isa<LoadInst>(instr1) || isa<StoreInst>(instr1) || isa<BranchInst>(instr1) || isa<AllocaInst>(instr1))
             return false;
         if (isa<LoadInst>(instr2) || isa<StoreInst>(instr2) || isa<BranchInst>(instr2) || isa<AllocaInst>(instr2))
@@ -289,7 +288,7 @@ void simplify(Module* M)
                     auto toErase = instr;
                     instr++;
                     toErase->eraseFromParent();
-                    CSEElim++;
+                    CSESimplify++;
                 }
                 else instr++;
             }
@@ -312,7 +311,7 @@ void CSE(Module* M)
                         instr2++;
                         toErase->replaceAllUsesWith((Value *)(&* instr1));
                         toErase->eraseFromParent();
-                        CSESimplify++;
+                        CSEElim++;
                     }
                     else instr2++;
 
@@ -323,7 +322,6 @@ void CSE(Module* M)
                 auto child = LLVMFirstDomChild(parent);
                 
                 while (child)
-                //while(instr2!=bb->end())
                 {
                     for (auto instr2 = unwrap(child)->begin(); instr2 != unwrap(child)->end();)
                     {
@@ -449,7 +447,7 @@ static void CommonSubexpressionElimination(Module *M)
         loadElimination(M);
 
         // optimization 2.b - Simplify Instructions 2
-        simplify(M);
+        //simplify(M);
 
         // optimization 3.a - Store Eliminations
         storeElimination(M);
