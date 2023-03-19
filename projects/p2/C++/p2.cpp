@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include<iostream>
+#include <iostream>
 
 #include "llvm-c/Core.h"
 
@@ -90,8 +90,7 @@ int main(int argc, char **argv) {
     }
 
     // If requested, do some early optimizations
-    //if (Mem2Reg)
-    if (false)
+    if (Mem2Reg)
     {
         legacy::PassManager Passes;
         Passes.add(createPromoteMemoryToRegisterPass());
@@ -239,7 +238,6 @@ bool isDead(Instruction &I) {
   return false;
 }
 
-
 bool isCommon (Instruction* instr1, Instruction* instr2)
 {
     if (LLVMDominates(wrap(instr1->getFunction()), wrap(instr1->getParent()), wrap(instr2->getParent())))
@@ -260,9 +258,8 @@ bool isCommon (Instruction* instr1, Instruction* instr2)
     return false;
 }
 
-int deadCodeEliminationLight(Module* M)
+void deadCodeEliminationLight(Module* M)
 {
-    int CSE_Basic = 0;
     for (auto func = M->begin();func!=M->end();func++)
     {
         for (auto bb = func->begin();bb!=func->end();bb++)
@@ -272,16 +269,14 @@ int deadCodeEliminationLight(Module* M)
                     auto toErase = instr;
                     instr++;
                     toErase->eraseFromParent();
-                    CSE_Basic++;
+                    CSEDead++;
                 }
                 else instr++;
     }
-    return CSE_Basic;
 }
 
-int simplify(Module* M)
+void simplify(Module* M)
 {
-    int CSE_Simplify = 0;
     for (auto func = M->begin();func!=M->end();func++)
     {
         for (auto bb = func->begin();bb!=func->end();bb++)
@@ -294,17 +289,15 @@ int simplify(Module* M)
                     auto toErase = instr;
                     instr++;
                     toErase->eraseFromParent();
-                    CSE_Simplify++;
+                    CSEElim++;
                 }
                 else instr++;
             }
     }
-    return CSE_Simplify;
 }
 
-int CSE(Module* M)
+void CSE(Module* M)
 {
-    int CSE_ = 0;
     for (auto func = M->begin();func!=M->end();func++)
     {
         for (auto bb = func->begin();bb!=func->end();bb++)
@@ -319,6 +312,7 @@ int CSE(Module* M)
                         instr2++;
                         toErase->replaceAllUsesWith((Value *)(&* instr1));
                         toErase->eraseFromParent();
+                        CSESimplify++;
                     }
                     else instr2++;
 
@@ -339,6 +333,7 @@ int CSE(Module* M)
                             instr2++;
                             toErase->replaceAllUsesWith((Value *)(&* instr1));
                             toErase->eraseFromParent();
+                            CSESimplify++;
                         }
                         else instr2++;
                     }
@@ -346,12 +341,10 @@ int CSE(Module* M)
                 }
             }
     }
-    return CSE_;
 }
 
-int loadElimination(Module* M)
+void loadElimination(Module* M)
 {
-    int CSE_RLoad = 0;
     for (auto func = M->begin();func!=M->end();func++)
     {
         for (auto bb = func->begin();bb!=func->end();bb++)
@@ -372,7 +365,8 @@ int loadElimination(Module* M)
                             instr2++;
                             toErase->replaceAllUsesWith((Value *)(&* instr1));
                             toErase->eraseFromParent();
-                            CSE_RLoad++;
+                            CSELdElim++;
+                            //LLVMStatisticsInc(CSE_RLoad);
                             continue;
                         }
                         else if (isa<StoreInst>(instr2) && !storeFound)
@@ -389,13 +383,10 @@ int loadElimination(Module* M)
             }
         }
     }
-    return CSE_RLoad;
 }
 
-void storeElimination(Module* M, int& CSE_RS, int& CSE_RS2L)
+void storeElimination(Module* M)
 {
-    int CSE_RStore = 0;
-    int CSE_RStore2Load = 0;
     for (auto func = M->begin();func!=M->end();func++)
     {
         for (auto bb = func->begin();bb!=func->end();bb++)
@@ -411,20 +402,20 @@ void storeElimination(Module* M, int& CSE_RS, int& CSE_RS2L)
                     {
                         if (isa<LoadInst>(instr2) && !instr2->isVolatile() && (dyn_cast<LoadInst>(instr2)->getPointerOperand() == dyn_cast<StoreInst>(instr1)->getPointerOperand()) && (((dyn_cast<StoreInst>(instr1))->getValueOperand())->getType() == instr2->getType()))
                         {
-                            //errs()<<"Store-Load Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
                             auto toErase = instr2;
                             instr2++;
-                            CSE_RStore2Load++;
+                            CSEStore2Load++;
                             toErase->replaceAllUsesWith((dyn_cast<StoreInst>(instr1))->getValueOperand());
                             toErase->eraseFromParent();
                             continue;
                         }
                         else if ( isa<StoreInst>(instr2) && (dyn_cast<StoreInst>(instr2)->getPointerOperand() == dyn_cast<StoreInst>(instr1)->getPointerOperand()) && (((dyn_cast<StoreInst>(instr1))->getValueOperand())->getType()==((dyn_cast<StoreInst>(instr2))->getValueOperand())->getType()) )
                         {
-                            //errs()<<"Store-Store Comparison: "<<*instr1<<" | "<<*instr2<<"\n";
+
                             auto toErase = instr1;
                             instr1++;
                             toErase->eraseFromParent();
+                            CSEStElim++;
                             storeFound = true;
                             break;
                         }
@@ -437,109 +428,34 @@ void storeElimination(Module* M, int& CSE_RS, int& CSE_RS2L)
             }
         }
     }
-    CSE_RS = CSE_RStore;
-    CSE_RS2L = CSE_RStore2Load;
 }
 
 static void CommonSubexpressionElimination(Module *M) 
 {
     // Implement this function
-    int CSE_Simplify = 0;
-    int CSE_Basic = 0;
-    int CSE_RLoad = 0;
-    int CSE_RStore = 0;
-    int CSE_RStore2load = 0;
 
     if (M!=nullptr)
-    {
-        //errs()<<"\n+++++++++++++++++ BEFORE +++++++++++++++++++++++++++++\n";
-        for (auto func = M->begin();func!=M->end();func++)
-        {
-            for (auto bb = func->begin();bb!=func->end();bb++)
-            {
-                
-                for (auto instr = bb->begin();instr!=bb->end();instr++)
-                {
-                    //errs()<<*instr<<"\n";
-                }
-            }
-        }
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";  
-
-        
+    {        
         // optimization 0 - Deadcode Elimination
-        //errs()<<"+++++++++++++++++++ OPT0 +++++++++++++++++++++++++++++\n";
-        CSE_Basic = deadCodeEliminationLight(M);
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        deadCodeEliminationLight(M);
 
-
-        // optimization 1.a - Simplify Instructions 1
-        //errs()<<"+++++++++++++++++++ OPT1.a +++++++++++++++++++++++++++++\n";
-        CSE_Simplify = simplify(M);
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
-
+        // optimization 1.a - Simplify Instructions
+        simplify(M);
 
         // optimization 1.b - CSE
-        //errs()<<"+++++++++++++++++++ OPT1.b +++++++++++++++++++++++++++++\n";
         CSE(M);
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
 
-
-        // optimization 2.a - Load Eliminations
-        //errs()<<"+++++++++++++++++++ OPT2 +++++++++++++++++++++++++++++\n";
-        CSE_RLoad = loadElimination(M);
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
-
+        // optimization 2 - Load Eliminations
+        loadElimination(M);
 
         // optimization 2.b - Simplify Instructions 2
-        //errs()<<"+++++++++++++++++++ OPT1.a +++++++++++++++++++++++++++++\n";
-        CSE_Simplify += simplify(M);
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        simplify(M);
 
-        //errs()<<"+++++++++++++++++++ OPT3 +++++++++++++++++++++++++++++\n";
-        storeElimination(M,CSE_RStore,CSE_RStore2load);
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
+        // optimization 3.a - Store Eliminations
+        storeElimination(M);
 
-        //errs()<<"++++++++++++++++++++++ AFTER +++++++++++++++++++++++++\n";
-        for (auto func = M->begin();func!=M->end();func++)
-        {
-            for (auto bb = func->begin();bb!=func->end();bb++)
-            {
-                
-                for (auto instr = bb->begin();instr!=bb->end();instr++)
-                {
-                    //errs()<<*instr<<"\n";
-                }
-            }
-        }
-        //errs()<<"++++++++++++++++++++++++++++++++++++++++++++++++++++++\n";
-
-        CSE_Simplify += simplify(M);
-
-
-
-        /*
-        // optimization 1 - CSE
-        for (auto func = M->begin();func!=M->end();func++)
-        {
-            for (auto bb = func->begin();bb!=func->end();bb++)
-            {   
-                for (auto instr1 = bb->begin();instr1!=bb->end();instr1++)
-                {
-                    auto instr2 = instr1;
-                    instr2++;
-                    for (;instr2!=bb->end();)
-                        if(isCommon(&*instr1,&*instr2))
-                        {
-                            errs()<<*instr1<<" |common with| "<<*instr2<<"\n";
-                            instr2->replaceAllUsesWith(SimplifyInstruction(&*instr1,M->getDataLayout()));
-                            instr2 = instr2->eraseFromParent();
-                        }
-                        else instr2++;
-                }
-            }
-        }
-        */
+        // optimization 3.b - Simplify Instructions 3
+        simplify(M);
     }
 }
 
