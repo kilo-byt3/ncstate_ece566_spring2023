@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <iostream>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "llvm-c/Core.h"
 
@@ -238,13 +242,20 @@ bool isDead(Instruction &I) {
   return false;
 }
 
+bool isSafe(Instruction* instr)
+{
+    if (isa<LoadInst>(instr) || isa<StoreInst>(instr) || isa<BranchInst>(instr) || isa<AllocaInst>(instr))
+        return false;
+    return true;
+}
+
 bool isCommon (Instruction* instr1, Instruction* instr2)
 {
     if (LLVMDominates(wrap(instr1->getFunction()), wrap(instr1->getParent()), wrap(instr2->getParent())))
     {
-        if (isa<LoadInst>(instr1) || isa<StoreInst>(instr1) || isa<BranchInst>(instr1) || isa<AllocaInst>(instr1))
+        if (isa<LoadInst>(instr1) || isa<StoreInst>(instr1) || isa<BranchInst>(instr1) || isa<AllocaInst>(instr1) || isa<PHINode>(instr1) || isa<ReturnInst>(instr1) || isa<ExtractValueInst>(instr1) || isa<ICmpInst>(instr1) || isa<FCmpInst>(instr1))
             return false;
-        if (isa<LoadInst>(instr2) || isa<StoreInst>(instr2) || isa<BranchInst>(instr2) || isa<AllocaInst>(instr2))
+        if (isa<LoadInst>(instr2) || isa<StoreInst>(instr2) || isa<BranchInst>(instr2) || isa<AllocaInst>(instr2) || isa<PHINode>(instr2) || isa<ReturnInst>(instr2) || isa<ExtractValueInst>(instr2) || isa<ICmpInst>(instr2) || isa<FCmpInst>(instr2))
             return false;
         if ((instr1->getOpcode() == instr2->getOpcode()) && (instr1->getType() == instr2->getType()) && (instr1->getNumOperands() == instr2->getNumOperands()))
         {
@@ -331,7 +342,7 @@ void CSE(Module* M)
                             instr2++;
                             toErase->replaceAllUsesWith((Value *)(&* instr1));
                             toErase->eraseFromParent();
-                            CSESimplify++;
+                            CSEElim++;
                         }
                         else instr2++;
                     }
@@ -340,6 +351,20 @@ void CSE(Module* M)
             }
     }
 }
+
+void show(Module* M)
+{
+    for (auto func = M->begin();func!=M->end();func++)
+    {
+        for (auto bb = func->begin();bb!=func->end();bb++)
+            for (auto instr1 = bb->begin();instr1!=bb->end();instr1++)
+            {
+                errs()<<*instr1<<"\n";
+            }
+    }
+
+}
+
 
 void loadElimination(Module* M)
 {
@@ -443,11 +468,12 @@ static void CommonSubexpressionElimination(Module *M)
         // optimization 1.b - CSE
         CSE(M);
 
+        simplify(M);
         // optimization 2 - Load Eliminations
         loadElimination(M);
 
         // optimization 2.b - Simplify Instructions 2
-        //simplify(M);
+        simplify(M);
 
         // optimization 3.a - Store Eliminations
         storeElimination(M);
