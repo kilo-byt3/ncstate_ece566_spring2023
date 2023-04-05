@@ -249,6 +249,19 @@ static void DoInlining(Module *M) {
     InlineFunctionInfo IFI;
     InlineFunction(*CI, IFI);
   */
+int count=0;
+for(auto func = M->begin();func!=M->end();func++)
+{
+  for(auto bb = func->begin();bb!=func->end();bb++)
+  {
+    for(auto instr = bb->begin();instr!=bb->end();instr++)
+    {
+      if(CallInst *CI = dyn_cast<CallInst>(&*instr))
+        count++;
+    }
+  }
+}
+errs()<<count;
 
 }
 
