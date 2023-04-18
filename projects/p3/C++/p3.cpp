@@ -244,6 +244,7 @@ static llvm::Statistic SizeReq = {"", "SizeReq", "Call has a constant argument."
 
 // Function to count the number of instructions in the function at the call instruction callInst
 
+
 int numInstructions(CallInst * callInst)
 {
   Function * Callee = callInst->getCalledFunction();
@@ -258,9 +259,9 @@ int numInstructions(CallInst * callInst)
 int numInstructions(Module * M)
 {
   int num=0;
-  for (auto &F: *M)
-    for(auto &BB: F)
-      for (auto &I : BB)
+  for (auto F = M->begin();F!=M->end();F++)
+    for(auto BB = F->begin();BB!=F->end();BB++)
+      for (auto I = BB->begin();I!=BB->end();I++)
         num++;
   return num;
 }
@@ -332,207 +333,104 @@ bool hasAllConstArgs(CallInst * callInst)
   return true;
 }
 
-// InlineFunctionSizeLimit - "inline-function-size-limit"
-// InlineGrowthFactor - "inline-growth-factor"
-// InlineConstArg - "inline-require-const-arg"
-// InlineHeuristic - "inline-heuristic"
+bool hasAConstArg(CallInst * callInst)
+{
+  for (unsigned i = 0; i < callInst->getNumOperands(); i++) 
+    if (isa<Constant>(callInst->getOperand(i)))
+      return true;
+  return false;
+}
 
 
-
+void minorStats(Module *M)
+{
+  errs()<<"Number of Instructions: "<<numInstructions(M)<<"\n";
+  errs()<<"Number of Functions: "<<numFunctions(M)<<"\n";
+  errs()<<"Number of Loads: "<<numLoads(M)<<"\n";
+  errs()<<"Number of Store: "<<numStores(M)<<"\n";
+}
   
 
 static void DoInlining(Module *M)
 {
+  std::deque<CallInst *> worklist;
+  std::set<CallInst *> inlined_calls;
+
   errs()<<"\n##############################################################\n";
-  errs() << "Calling inlining\n";
+  errs()<<"Before:\n";
+  minorStats(M);
 
-  int BEFORE, AFTER;
-  int numFB, numFA;
-  int numLB, numLA;
-  int numSB, numSA;
-  float FACTOR;
+  int num = numInstructions(M);
 
-  BEFORE = numInstructions(M);
-  numFB = numFunctions(M);
-  numLB = numLoads(M);
-  numSB = numStores(M);
-  std::deque<CallInst *> worklist;
-  std::set<CallInst *> inlined_calls;
-
-  for (auto &F : *M) 
-  {
-    for (auto &BB : F) 
+  if(InlineHeuristic)
     {
-      for (auto &I : BB) 
-      {
-        auto *CI = dyn_cast<CallInst>(&I);
-        if (CI)
-        {
-          Function *Callee = CI->getCalledFunction();
-          /*
-          if (hasAllConstArgs(CI))
-            errs()<<"\n ALL CONST ARGS 1\n";
-          else
-            errs()<<"\n NO CONST ARGS 1 \n";
-          */
-          if (Callee && !Callee->isDeclaration() && !inlined_calls.count(CI));
-          {
-            worklist.push_back(CI);
-          }
-        }
-      }
-    }
-  }
-  //errs()<<"MIDPOINT\n";
-  std::vector<CallInst*> inlined;
-  while (!worklist.empty()) {
-    CallInst *CI = worklist.front();
-    Function *Callee = nullptr;
-    if (CI)
+    for (auto &F : *M) 
     {
-      Callee = CI->getCalledFunction();
-      /*
-      if(hasAllConstArgs(CI))
-        errs()<<"\n ALL CONST ARGS 2\n";
-      else
-            errs()<<"\n NO CONST ARGS 2 \n";
-      */
-      if (Callee && !Callee->isDeclaration() && inlined_calls.count(CI)==0)
+      for (auto &BB : F) 
       {
-        InlineResult IR = isInlineViable(*Callee);
-        if(IR.isSuccess())
+        for (auto &I : BB) 
         {
-          inlined_calls.insert(CI);
-          //errs()<<"##############################################################\n";
-          //errs()<<"Callee BEFORE\n";
-          //errs() << "\n";
-          InlineFunctionInfo IFI;
-          llvm::Statistic nInstrB("X", "Y", 0);
-          llvm::Statistic nInstrA("X", "Y", 0);
-          int num = numInstructions(M);
-          //int delta = numInstructions(CI);
-          countInstructions(M, nInstrB);
-          auto Zone = CI->getParent();
-          //CallInst* temp = dyn_cast<CallInst>(CI->clone());
-          IR = InlineFunction(*CI, IFI);
-          int i=0;
-          if (IR.isSuccess())
+          auto *CI = dyn_cast<CallInst>(&I);
+          if (CI)
           {
-            //inlined.push_back(temp);
-              for (auto &I: *Zone)
-              {
-                auto *newCI = dyn_cast<CallInst>(&I);
-                if(newCI)
-                  if(std::find(worklist.begin(),worklist.end(),newCI)==worklist.end())
-                  {
-                    //errs()<<"New Call Found.\n";
-                    worklist.push_back(newCI);
-                    i++;
-                  }
-                  /*
-                  else if(std::find(worklist.begin(),worklist.end(),newCI)==worklist.begin())
-                    errs()<<"Recursion.\n";
-                  else
-                    errs()<<"In worklist already.\n";
-                  */
-              }
-          }
-          //countInstructions(M, nInstrA);  
-          //errs()<<"Before: "<<nInstrB<<" Num: "<<num<<"\n";      
-          //errs()<<"Callee AFTER\n";          
-          //errs() << "\n";
-          num = numInstructions(M);
-          //errs()<<"After: "<<num<<"\n";
-          //errs()<<"##############################################################\n";
-        }
-      }
-
-    }
-    worklist.pop_front();
-  }
-
-  AFTER = numInstructions(M);
-  numFA = numFunctions(M);
-  numLA = numLoads(M);
-  numSA = numStores(M);
-  FACTOR = (float(AFTER))/BEFORE;
-
-  errs()<<"Before: \n";
-  errs()<<"No. of Instructions: "<<BEFORE<<"\n";
-  errs()<<"No. of Functions: "<<numFB<<"\n";
-  errs()<<"No. of Loads: "<<numLB<<"\n";
-  errs()<<"No. of Stores: "<<numSB<<"\n\n";
-  errs()<<"After: \n";
-  errs()<<"No. of Instructions: "<<AFTER<<"\n";
-  errs()<<"No. of Functions: "<<numFA<<"\n";
-  errs()<<"No. of Loads: "<<numLA<<"\n";
-  errs()<<"No. of Stores: "<<numSA<<"\n";
-  errs()<<"Factor: "<<FACTOR<<"\n";
-  errs()<<"##############################################################\n\n";
-}
-
-/*
-static void DoInlining(Module *M)
-{
-  errs() << "Calling inlining\n";
-  std::deque<CallInst *> worklist;
-  std::set<CallInst *> inlined_calls;
-
-  for (auto &F : *M) 
-  {
-    for (auto &BB : F) 
-    {
-      for (auto &I : BB) 
-      {
-        auto *CI = dyn_cast<CallInst>(&I);
-        if (CI)
-        {
-          Function *Callee = CI->getCalledFunction();
-          if (Callee && !Callee->isDeclaration() && !inlined_calls.count(CI))
-          {
-            worklist.push_back(CI);
-          }
-        }
-      }
-    }
-  }
-  errs()<<"MIDPOINT\n";
-  while (!worklist.empty()) {
-    CallInst *CI = worklist.front();
-    worklist.pop_front();
-    Function *Callee = nullptr;
-    if (CI)
-    {
-      Callee = CI->getCalledFunction();
-      if (Callee && !Callee->isDeclaration() && inlined_calls.count(CI)==0)
-      {
-        InlineResult IR = isInlineViable(*Callee);
-        if(IR.isSuccess())
-        {
-          InlineFunctionInfo IFI;
-          IR = InlineFunction(*CI, IFI);
-          if(IR.isSuccess())
-          {
-            inlined_calls.insert(CI);
-            for (auto &BB : *Callee) 
+            Function *Callee = CI->getCalledFunction();
+            if (Callee && !Callee->isDeclaration())
             {
-              for (auto &I : BB) 
+              if (numInstructions(CI)<=InlineFunctionSizeLimit )
               {
-                auto *NewCI = dyn_cast<CallInst>(&I);
-                if (NewCI)
-                {
-                  Function *NewCallee = NewCI->getCalledFunction();
-                  if (NewCallee && !NewCallee->isDeclaration() && !inlined_calls.count(NewCI))
-                  {
-                    worklist.push_back(NewCI);
-                  }
-                }
+                if(!InlineConstArg || (InlineConstArg && hasAConstArg(CI)))
+                  worklist.push_back(CI);
+                if(InlineConstArg && hasAConstArg(CI))
+                  ConstArg++;
               }
             }
           }
         }
       }
     }
-  }
+    while (!worklist.empty())
+    //while (!worklist.empty() && numInstructions(M)<(num*InlineGrowthFactor)) 
+    {
+      //errs()<<worklist.size()<<"\n";
+      CallInst *CI = worklist.front();
+      worklist.pop_front();
+      /*
+      if (inlined_calls.find(CI) != inlined_calls.end())
+        continue;
+        */
+      Function *Callee = nullptr;
+      if (CI)
+      {
+        Callee = CI->getCalledFunction();
+        if (Callee && !Callee->isDeclaration())
+        {
+          InlineResult IR = isInlineViable(*Callee);
+          if(IR.isSuccess())
+          {
+            InlineFunctionInfo IFI;
+            auto Zone = CI->getParent();
+            IR = InlineFunction(*CI, IFI);
+            if (IR.isSuccess())
+            {
+                inlined_calls.insert(CI);
+                Inlined++;
+                //changed = true;
+                for (auto &I: *Zone)
+                {
+                  auto *newCI = dyn_cast<CallInst>(&I);
+                  if(newCI)
+                    if(inlined_calls.find(newCI) == inlined_calls.end())
+                      worklist.push_back(newCI);
+                }
+            }
+          }
+        }
+      }
+    }
+    
+    }
+    errs()<<"After: \n";
+    minorStats(M);
+    errs()<<"##############################################################\n\n";
+    SizeReq = num/numInstructions(M);
 }
-*/
